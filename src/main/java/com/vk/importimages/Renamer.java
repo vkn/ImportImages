@@ -1,5 +1,9 @@
 package com.vk.importimages;
 
+import com.drew.imaging.ImageMetadataReader;
+import com.drew.imaging.ImageProcessingException;
+import com.drew.metadata.Metadata;
+import com.drew.metadata.exif.ExifIFD0Directory;
 import com.vk.importimages.ftp.Client;
 import java.io.File;
 import java.io.FileInputStream;
@@ -13,7 +17,9 @@ import org.apache.commons.net.ftp.FTPFile;
 
 public class Renamer {
 
-    private static Pattern p = Pattern.compile(".*?(\\d{8})(.+)(\\d{6}).*?");
+    private static final Pattern p = Pattern.compile(".*?(\\d{8})(.+)(\\d{6}).*?");
+    public static final String CAMERA_MODEL_UNKNOWN = "UNKNOWN";
+    public static final String CAMERA_MODEL_DELIMITER = ";;;";
 
     public void run(Client client) throws IOException {
         for (FTPFile file : client.listFiles("/")) {
@@ -27,21 +33,6 @@ public class Renamer {
             boolean renamed = client.rename(name, newName);
             System.out.println(String.format("%s %srenamed to %s", name, (renamed ? "" : "not "), toStandard(name)));
         }
-    }
-
-    public static void main(String[] args) throws IOException {
-        Properties prop = new Properties();
-        FileInputStream input = new FileInputStream("config.properties");
-        prop.load(input);
-        Client client = new Client(
-            prop.getProperty("ftp.server"),
-            Integer.parseInt(prop.getProperty("ftp.port")),
-            prop.getProperty("ftp.username"),
-            prop.getProperty("ftp.password")
-        );
-        Renamer renamer = new Renamer();
-        renamer.run(client);
-
     }
 
     @SuppressWarnings("unchecked")
@@ -63,6 +54,24 @@ public class Renamer {
         return addMobiMarker(input);
     }
     
+    public static String getCameraId(File file) throws IOException, ImageProcessingException {
+        Metadata metadata = ImageMetadataReader.readMetadata(file);
+//        for (Directory directory : metadata.getDirectories()) {
+//            for (Tag tag : directory.getTags()) {
+//                System.out.println(tag);
+//            }
+//        }
+
+        ExifIFD0Directory dir  = metadata.getFirstDirectoryOfType(ExifIFD0Directory.class);
+        if (dir == null) {
+            return CAMERA_MODEL_UNKNOWN + CAMERA_MODEL_DELIMITER + CAMERA_MODEL_UNKNOWN;
+        }
+        return dir.getString(ExifIFD0Directory.TAG_MAKE) 
+                + CAMERA_MODEL_DELIMITER 
+                + dir.getString(ExifIFD0Directory.TAG_MODEL);
+    }
+    
+    
     private static String addMobiMarker(String input) {
         if (input.contains("_mobi")) {
             return input;
@@ -70,5 +79,19 @@ public class Renamer {
         int pointIndex = input.lastIndexOf('.');
         return input.substring(0, pointIndex) + "_mobi" + input.substring(pointIndex);                    
     }
+    
+    public static void main(String[] args) throws IOException {
+        Properties prop = new Properties();
+        FileInputStream input = new FileInputStream("config.properties");
+        prop.load(input);
+        Client client = new Client(
+            prop.getProperty("ftp.server"),
+            Integer.parseInt(prop.getProperty("ftp.port")),
+            prop.getProperty("ftp.username"),
+            prop.getProperty("ftp.password")
+        );
+        Renamer renamer = new Renamer();
+        renamer.run(client);
+    }    
 
 }
